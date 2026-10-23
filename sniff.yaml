@@ -1,0 +1,52 @@
+# =====================================================================
+#  ProBreeze dehumidifier - ETAPE 1 : sniffer passif (aucune emission)
+# =====================================================================
+#  But  : capturer en hexa le trafic UART de la carte, confirmer le baud
+#         rate et le header 0x55 0xAA (protocole Tuya MCU).
+#  Cible: ESP32-C3 Super Mini, UART0 sur GPIO20 (RX) / GPIO21 (TX)
+#  Logs : via USB-C (USB Serial/JTAG) -> UART0 libre pour le sniff
+# =====================================================================
+
+substitutions:
+  baud_rate: "9600"          # essayer 115200 si le hex est du bruit
+
+esphome:
+  name: probreeze-sniff
+  friendly_name: ProBreeze Sniff
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: esp-idf
+  flash_size: 4MB
+
+# CRITIQUE : sans ca, les logs partent sur GPIO20/21 et polluent le sniff
+logger:
+  level: VERBOSE
+  hardware_uart: USB_SERIAL_JTAG
+
+uart:
+  id: uart_bus
+  rx_pin:
+    number: GPIO20
+    mode: INPUT_PULLUP
+  tx_pin:
+    number: GPIO21
+    mode: OUTPUT
+  baud_rate: ${baud_rate}
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+  rx_buffer_size: 1024
+  debug:
+    id: uart_sniff
+    direction: RX
+    dummy_receiver: true     # obligatoire : aucun autre composant ne lit le bus
+    after:
+      timeout: 20ms          # flush apres 20 ms de silence = 1 trame
+    sequence:
+      - lambda: |-
+          UARTDebug::log_hex(direction, bytes, ':');
+
+# Rien d'autre : pas de wifi, pas d'api, pas de tuya -> 0 octet emis

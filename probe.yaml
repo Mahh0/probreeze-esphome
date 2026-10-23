@@ -1,0 +1,71 @@
+# =====================================================================
+#  ProBreeze - ETAPE 4 : sonde active (on parle en premier)
+# =====================================================================
+#  Le MCU ignore le heartbeat vide d'ESPHome. Ici on rejoue a la main la
+#  sequence d'init complete d'un module Tuya, toutes les 10 s :
+#    1. heartbeat         55 AA 00 00 00 00 FF
+#    2. product query     55 AA 00 01 00 00 00
+#    3. conf query        55 AA 00 02 00 00 01
+#    4. wifi state = 4    55 AA 00 03 00 01 04 07
+#  Aucun composant n'est attache au bus : on logue le brut et on parse
+#  hors ligne. But = voir si le MCU daigne repondre (CMD=0x00/0x01/0x02).
+# =====================================================================
+
+substitutions:
+  baud_rate: "9600"
+
+esphome:
+  name: probreeze-probe
+  friendly_name: ProBreeze Probe
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: esp-idf
+  flash_size: 4MB
+
+logger:
+  level: DEBUG
+  hardware_uart: USB_SERIAL_JTAG
+
+uart:
+  id: uart_bus
+  rx_pin:
+    number: GPIO20
+    mode: INPUT_PULLUP
+  tx_pin:
+    number: GPIO21
+    mode: OUTPUT
+  baud_rate: ${baud_rate}
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+  rx_buffer_size: 1024
+  debug:
+    direction: BOTH
+    dummy_receiver: true
+    after:
+      timeout: 20ms
+    sequence:
+      - lambda: |-
+          UARTDebug::log_hex(direction, bytes, ':');
+
+script:
+  - id: tuya_init
+    then:
+      - uart.write: [0x55,0xAA,0x00,0x00,0x00,0x00,0xFF]   # heartbeat
+      - delay: 300ms
+      - uart.write: [0x55,0xAA,0x00,0x01,0x00,0x00,0x00]   # product query
+      - delay: 300ms
+      - uart.write: [0x55,0xAA,0x00,0x02,0x00,0x00,0x01]   # conf query
+      - delay: 300ms
+      - uart.write: [0x55,0xAA,0x00,0x03,0x00,0x01,0x04,0x07]  # wifi state 4
+      - delay: 300ms
+      - uart.write: [0x55,0xAA,0x00,0x08,0x00,0x00,0x07]  # datapoint query = dump tout
+      - delay: 300ms
+
+interval:
+  - interval: 5s
+    then:
+      - script.execute: tuya_init

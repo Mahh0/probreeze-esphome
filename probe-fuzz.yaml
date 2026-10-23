@@ -1,0 +1,83 @@
+# =====================================================================
+#  ProBreeze - ETAPE 5 : enumeration des enums dp4 / dp5 / dp101
+# =====================================================================
+#  Toutes les 6 s : on ecrit une valeur candidate (DATAPOINT_DELIVER 0x06)
+#  puis 1 s plus tard on demande le dump complet (DATAPOINT_QUERY 0x08).
+#  Si le MCU a accepte, le dump renvoie la valeur ecrite. Sinon il renvoie
+#  l'ancienne -> on connait la plage valide.
+#
+#  Sequence : dp4 = 0,1,2,3 | dp5 = 0,1,2,3 | dp101 = 1,2,3,12,24  (13 pas)
+# =====================================================================
+
+substitutions:
+  baud_rate: "9600"
+
+esphome:
+  name: probreeze-fuzz
+  friendly_name: ProBreeze Fuzz
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: esp-idf
+  flash_size: 4MB
+
+logger:
+  level: DEBUG
+  hardware_uart: USB_SERIAL_JTAG
+
+uart:
+  id: uart_bus
+  rx_pin:
+    number: GPIO20
+    mode: INPUT_PULLUP
+  tx_pin:
+    number: GPIO21
+    mode: OUTPUT
+  baud_rate: ${baud_rate}
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+  rx_buffer_size: 1024
+  debug:
+    direction: BOTH
+    dummy_receiver: true
+    after:
+      timeout: 20ms
+    sequence:
+      - lambda: |-
+          UARTDebug::log_hex(direction, bytes, ':');
+
+globals:
+  - id: step
+    type: int
+    restore_value: false
+    initial_value: "0"
+
+script:
+  - id: fuzz
+    then:
+      - lambda: |-
+          static const uint32_t v101[] = {1, 2, 3, 12, 24};
+          int s = id(step);
+          uint8_t dp; uint32_t val;
+          if (s < 4)        { dp = 4;   val = (uint32_t) s; }
+          else if (s < 8)   { dp = 5;   val = (uint32_t) (s - 4); }
+          else              { dp = 101; val = v101[s - 8]; }
+          auto *u = id(uart_bus);
+          std::vector<uint8_t> f = {0x55, 0xAA, 0x00, 0x06, 0x00, 0x05,
+                                    dp, 0x04, 0x00, 0x01, (uint8_t) (val & 0xFF)};
+          uint8_t c = 0;
+          for (auto b : f) c += b;
+          f.push_back(c);
+          ESP_LOGI("fuzz", "STEP %d -> SET dp%d = %u", s, dp, (unsigned) val);
+          u->write_array(f.data(), f.size());
+          id(step) = (s + 1) % 13;
+      - delay: 1s
+      - uart.write: [0x55, 0xAA, 0x00, 0x08, 0x00, 0x00, 0x07]
+
+interval:
+  - interval: 6s
+    then:
+      - script.execute: fuzz

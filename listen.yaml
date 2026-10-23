@@ -1,0 +1,47 @@
+# =====================================================================
+#  ProBreeze - ETAPE 6 : dp2 (humidite cible) machine ALLUMEE
+# =====================================================================
+substitutions:
+  baud_rate: "9600"
+
+esphome:
+  name: probreeze-listen
+  friendly_name: ProBreeze dp2 test
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: esp-idf
+  flash_size: 4MB
+
+logger:
+  level: DEBUG
+  hardware_uart: USB_SERIAL_JTAG
+
+uart:
+  id: uart_bus
+  rx_pin:
+    number: GPIO20
+    mode: INPUT_PULLUP
+  baud_rate: ${baud_rate}
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+  rx_buffer_size: 1024
+  debug:
+    direction: BOTH
+    dummy_receiver: true
+    after:
+      timeout: 20ms
+    sequence:
+      - lambda: |-
+          UARTDebug::log_hex(direction, bytes, ':');
+
+globals:
+  - id: step
+    type: int
+    restore_value: false
+    initial_value: "0"
+
+

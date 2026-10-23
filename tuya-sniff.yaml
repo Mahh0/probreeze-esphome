@@ -1,0 +1,63 @@
+# =====================================================================
+#  ProBreeze - ETAPE 3 : on devient le module Tuya (emission active)
+# =====================================================================
+#  Objectif : terminer le handshake MCU <-> module pour obtenir le dump
+#  complet des DP et pouvoir piloter l'appareil.
+#
+#  CABLAGE REQUIS POUR CETTE ETAPE :
+#     carte TXD  -> GPIO20 (RX)
+#     carte RXD  -> GPIO21 (TX)     <-- nouveau
+#     GND commun
+#     +5V carte  -> NON BRANCHE
+# =====================================================================
+
+substitutions:
+  baud_rate: "9600"
+
+esphome:
+  name: probreeze-sniff
+  friendly_name: ProBreeze Sniff
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: esp-idf
+  flash_size: 4MB
+
+logger:
+  level: VERBOSE
+  hardware_uart: USB_SERIAL_JTAG
+  logs:
+    tuya: VERBOSE
+    uart_debug: DEBUG
+
+uart:
+  id: uart_bus
+  rx_pin:
+    number: GPIO20
+    mode: INPUT_PULLUP
+  tx_pin:
+    number: GPIO21
+    mode: OUTPUT
+  baud_rate: ${baud_rate}
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+  rx_buffer_size: 1024
+  debug:
+    direction: BOTH          # >>>> = ce que l'ESP envoie, <<<< = ce que la carte envoie
+    after:
+      timeout: 20ms
+    sequence:
+      - lambda: |-
+          UARTDebug::log_hex(direction, bytes, ':');
+
+tuya:
+  # filet de securite : trace brute de chaque DP recu, meme non declare
+  on_datapoint_update:
+    - sensor_datapoint: 6
+      datapoint_type: any
+      then:
+        - lambda: |-
+            ESP_LOGI("map", "DP6 recu");

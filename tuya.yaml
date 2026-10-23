@@ -1,0 +1,256 @@
+# =====================================================================
+#  ProBreeze Dehumidifier - integration ESPHome definitive
+# =====================================================================
+#  Protocole Tuya MCU 9600 8N1, ESP32-C3 Super Mini
+#    carte TXD -> GPIO20        carte RXD -> GPIO7         GND commun
+#
+#  TX volontairement sur GPIO7 et non GPIO21 : le bootloader ROM de l'ESP32-C3
+#  imprime ses logs a 115200 bauds sur GPIO21 (U0TXD) a chaque reset, ce qui
+#  envoie du charabia dans le RX du MCU et le fait verrouiller (defaut U0).
+#  L'UART passe par la matrice GPIO, donc n'importe quelle broche convient.
+#
+#  Mapping DP (identifie par capture passive + tests d'ecriture) :
+#    1   bool   RW   Marche / Arret
+#    2   int    RW   Consigne 30..90 par 5, 170 (0xAA)=AU, 187 (0xBB)=CO
+#    4   enum   RW   Ventilateur 0=bas 1=haut
+#    5   enum   RO   Mode reflete : 0=CO, 1=AU, 2=manuel
+#    6   int    RO   Humidite ambiante %RH
+#    25  enum   RO   inconnu, constant = 1
+#    101 enum   RW   Timer 0..24 heures, remis a 0 a l'extinction
+#
+#  Product id MCU : bnrwkmfkce6hmxbm   firmware 1.0.0
+# =====================================================================
+
+substitutions:
+  baud_rate: "9600"
+
+esphome:
+  name: probreeze
+  friendly_name: ProBreeze
+  includes:
+    - esp_wifi_ps.h
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: esp-idf
+  flash_size: 4MB
+  # 80 MHz suffit largement pour UART + WiFi + API, et rabaisse la conso.
+  cpu_frequency: 80MHz
+
+logger:
+  level: DEBUG
+  hardware_uart: USB_SERIAL_JTAG
+  logs:
+    tuya: DEBUG
+    uart_debug: WARN      # passe a DEBUG pour revoir le hex brut
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Mode par defaut : econome. On repasse en "none" dynamiquement quand le
+  # deshumidificateur est en marche (voir l'interval en bas de fichier).
+  # En veille, cela ramene la consommation moyenne au niveau du module Tuya
+  # d'origine (~20-30 mA) et supprime le gresillement de l'alim a decoupage.
+  power_save_mode: light
+  ap:
+    ssid: "probreeze-fallback"
+    password: !secret wifi_ap_password
+
+captive_portal:
+
+# Expose la cause du dernier reset (brownout, power glitch, panic, ...)
+debug:
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+uart:
+  id: uart_bus
+  rx_pin:
+    number: GPIO20
+    mode: INPUT_PULLUP
+  tx_pin:
+    number: GPIO7
+    mode: OUTPUT
+  baud_rate: ${baud_rate}
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+  rx_buffer_size: 512
+  debug:
+    direction: RX
+    after:
+      timeout: 50ms
+    sequence:
+      - lambda: |-
+          UARTDebug::log_hex(direction, bytes, ':');
+
+tuya:
+
+# ---------------------------------------------------------------------
+#  Pilotage
+# ---------------------------------------------------------------------
+switch:
+  - platform: tuya
+    id: power
+    name: "Marche"
+    icon: mdi:power
+    switch_datapoint: 1
+
+select:
+  # Le selecteur physique : 30..90 %.
+  # Attention : AU (0xAA) et CO (0xBB) ne sont PAS inscriptibles. Le MCU valide
+  # 30..90 en ecriture et ramene toute valeur hors plage a 30. Ces deux etats
+  # ne peuvent venir que du bouton physique ; ils sont remontes par "Mode".
+  - platform: tuya
+    id: consigne
+    name: "Consigne"
+    icon: mdi:water-percent
+    int_datapoint: 2
+    options:
+      30: "30 %"
+      35: "35 %"
+      40: "40 %"
+      45: "45 %"
+      50: "50 %"
+      55: "55 %"
+      60: "60 %"
+      65: "65 %"
+      70: "70 %"
+      75: "75 %"
+      80: "80 %"
+      85: "85 %"
+      90: "90 %"
+
+  - platform: tuya
+    id: timer
+    name: "Timer"
+    icon: mdi:timer-outline
+    enum_datapoint: 101
+    options:
+      0: "0 h"
+      1: "1 h"
+      2: "2 h"
+      3: "3 h"
+      4: "4 h"
+      5: "5 h"
+      6: "6 h"
+      7: "7 h"
+      8: "8 h"
+      9: "9 h"
+      10: "10 h"
+      11: "11 h"
+      12: "12 h"
+      13: "13 h"
+      14: "14 h"
+      15: "15 h"
+      16: "16 h"
+      17: "17 h"
+      18: "18 h"
+      19: "19 h"
+      20: "20 h"
+      21: "21 h"
+      22: "22 h"
+      23: "23 h"
+      24: "24 h"
+
+  - platform: tuya
+    id: ventilation
+    name: "Ventilateur"
+    icon: mdi:fan
+    enum_datapoint: 4
+    options:
+      0: "Haut"
+      1: "Bas"
+
+# ---------------------------------------------------------------------
+#  Etats
+# ---------------------------------------------------------------------
+sensor:
+  - platform: tuya
+    id: humidite
+    name: "Humidite"
+    icon: mdi:water
+    sensor_datapoint: 6
+    unit_of_measurement: "%"
+    device_class: humidity
+    state_class: measurement
+    accuracy_decimals: 0
+
+  # dp5 reflete le mode du selecteur physique (0=CO, 1=AU, 2=manuel).
+  # Il est en lecture seule : on le garde interne et on l'expose en texte lisible.
+  - platform: tuya
+    id: mode
+    internal: true
+    sensor_datapoint: 5
+
+  - platform: wifi_signal
+    name: "Signal WiFi"
+    update_interval: 60s
+    entity_category: diagnostic
+
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: template
+    name: "Mode"
+    icon: mdi:tune
+    update_interval: 5s
+    lambda: |-
+      float v = id(mode).state;
+      if (isnan(v))
+        return {"inconnu"};
+      switch ((int) v) {
+        case 0: return {"CO (continu)"};
+        case 1: return {"AU (auto)"};
+        case 2: return {"Manuel"};
+        default: return {"inconnu"};
+      }
+
+  - platform: version
+    name: "Version ESPHome"
+    entity_category: diagnostic
+
+  - platform: debug
+    reset_reason:
+      name: "Cause du dernier reset"
+      entity_category: diagnostic
+      icon: mdi:restart-alert
+
+button:
+  - platform: restart
+    name: "Redemarrer"
+    entity_category: config
+
+# ---------------------------------------------------------------------
+#  Gestion de la consommation
+# ---------------------------------------------------------------------
+#  En veille (dp1 = 0) on laisse le modem dormir entre deux DTIM : la conso
+#  moyenne tombe a ~20-30 mA, comme le module Tuya d'origine. Cela suffit a
+#  faire taire l'alimentation a decoupage du deshumidificateur, qui gresille
+#  quand elle est chargee en continu.
+#  En marche (dp1 = 1) on repasse en WIFI_PS_NONE : radio toujours eveillee,
+#  latence ~2 ms, commandes instantanees. Le bruit est alors masque par le
+#  ventilateur et le compresseur.
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          static int applied = -1;
+          int want = id(power).state ? 0 : 1;   // 0 = WIFI_PS_NONE, 1 = MIN_MODEM
+          if (want != applied) {
+            applied = want;
+            esp_wifi_set_ps(want == 0 ? WIFI_PS_NONE : WIFI_PS_MIN_MODEM);
+            ESP_LOGI("conso", "Appareil %s -> power_save %s",
+                     id(power).state ? "en marche" : "en veille",
+                     want == 0 ? "none" : "light");
+          }

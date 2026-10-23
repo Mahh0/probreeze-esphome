@@ -1,0 +1,20 @@
+# Build ESPHome
+/.esphome/
+/build/
+__pycache__/
+*.pyc
+
+# Secrets — ne jamais commiter
+/secrets.yaml
+secrets.yaml.bak
+
+# Sauvegardes locales editees a la main
+*.bak
+
+# Captures et logs de mise au point
+*.log
+
+# OS / editeurs
+.DS_Store
+*.swp
+*~
