@@ -93,6 +93,7 @@ uart:
           UARTDebug::log_hex(direction, bytes, ':');
 
 tuya:
+  id: tuya_hub
 
 # ---------------------------------------------------------------------
 #  Pilotage
@@ -170,17 +171,32 @@ select:
       0: "Haut"
       1: "Bas"
 
-  # dp5 est documente RO cote Tuya, mais le MCU accepte visiblement les
-  # ecritures. A confirmer / retirer selon les essais.
-  - platform: tuya
-    id: mode_ctl
+  # dp5 est documente RO cote Tuya, mais le MCU accepte les ecritures.
+  # On passe par un template select pour pouvoir REFUSER le changement quand
+  # l'appareil est en veille : dans cet etat le MCU traite dp5 de facon
+  # incoherente (il accepte, rapporte autre chose, ou revient a 30).
+  - platform: template
+    id: mode_sel
     name: "Mode"
     icon: mdi:tune
-    enum_datapoint: 5
+    optimistic: false
     options:
-      0: "CO (continu)"
-      1: "AU (auto)"
-      2: "Manuel"
+      - "CO (continu)"
+      - "AU (auto)"
+      - "Manuel"
+    set_action:
+      - lambda: |-
+          if (!id(power).state) {
+            ESP_LOGW("mode", "Refus: appareil en veille (dp1=0), mode inchange");
+            float cur = id(dp5_state).state;
+            if (cur == 0)      id(mode_sel).publish_state("CO (continu)");
+            else if (cur == 1) id(mode_sel).publish_state("AU (auto)");
+            else               id(mode_sel).publish_state("Manuel");
+            return;
+          }
+          uint8_t v = (x == "CO (continu)") ? 0 : (x == "AU (auto)") ? 1 : 2;
+          ESP_LOGI("mode", "Mode -> %s (dp5=%u)", x.c_str(), v);
+          id(tuya_hub)->set_enum_datapoint_value(5, v);
 
 # ---------------------------------------------------------------------
 #  Etats
@@ -195,6 +211,18 @@ sensor:
     device_class: humidity
     state_class: measurement
     accuracy_decimals: 0
+
+  # dp5 : reflet du mode. Sert a publier l'etat reel du select "Mode",
+  # y compris quand le changement vient du bouton physique.
+  - platform: tuya
+    id: dp5_state
+    internal: true
+    sensor_datapoint: 5
+    on_value:
+      - lambda: |-
+          if (x == 0)      id(mode_sel).publish_state("CO (continu)");
+          else if (x == 1) id(mode_sel).publish_state("AU (auto)");
+          else if (x == 2) id(mode_sel).publish_state("Manuel");
 
 
   - platform: wifi_signal

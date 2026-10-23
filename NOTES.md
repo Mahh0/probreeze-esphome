@@ -62,6 +62,10 @@ essais faits en veille ont produit des resultats contradictoires.
 
 Passer en Manuel remet dp2 a 30 : il faut enchainer avec la consigne voulue.
 
+Le firmware applique un **garde-fou** : le select `Mode` est un template select dont
+le `set_action` refuse l'ecriture si `dp1=0` (appareil en veille) et republie l'etat
+reel. L'ecriture part ensuite via `id(tuya_hub)->set_enum_datapoint_value(5, v)`.
+
 Le MCU envoie un **dump complet** (dp1,2,6,5,4,101,25) a la mise sous tension
 et a chaque changement d'etat, puis des reports unitaires toutes les 5 s.
 

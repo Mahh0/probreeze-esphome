@@ -3,6 +3,10 @@ Ajout d'un contrôle wifi Tuya sur le déshumidificateur Probreeze 12L avec comp
 
 Le protocole série **Tuya MCU** a été entièrement décodé à l'écoute.
 
+> Pour piloter l'appareil depuis Home Assistant (ou depuis un agent qui s'en
+> occupe), voir **[`HOME_ASSISTANT.md`](HOME_ASSISTANT.md)** : entités exposées,
+> interactions entre `Mode` et `Consigne`, commandes à ne pas envoyer.
+
 ---
 
 ## Tableau 
@@ -149,6 +153,7 @@ Le CPU est fixé à 80 MHz, largement suffisant.
 | Fichier | Rôle |
 |---|---|
 | `tuya.yaml` | firmware final |
+| `HOME_ASSISTANT.md` | référence des entités pour assistants IA |
 | `NOTES.md` | notes de reverse-engineering complètes |
 | `secrets.yaml.example` | modèle de configuration |
 | `esp_wifi_ps.h` | en-tête requis pour `esp_wifi_set_ps()` en lambda |
