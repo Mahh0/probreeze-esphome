@@ -38,12 +38,29 @@ Valeurs observees en 2 min : 55, 56, 57, 58 (oscillation ±1)
 | 101| enum (t4) | 0 -> 1..5 -> 0 | **Timer en heures** (confirme : 2 appuis = 2 h) | certain |
 
 Le timer (dp101) est remis a 0 automatiquement a l'extinction.
-dp2 : plage 30..80 par pas de 5 (confirme 30 -> 35 -> 40), 187 = sentinelle invalide.
+dp2 : plage 30..90 par pas de 5, 170 = AU, 187 = CO (valeurs emises par le
+selecteur physique, non inscriptibles directement).
 
-### dp5 : piste CO / manuel
-dp5 vaut 0 quand dp2=187, et 2 des qu'une consigne manuelle est posee.
-Le selecteur physique descend sous 30 sur un cran "CO" (continu).
-Hypothese : dp5 = mode {0: CO/continu, 2: consigne manuelle}. A verifier.
+### dp5 : mode, RW malgre la spec
+**Confirme le 2026-10-23.** dp5 est declare RO cote Tuya mais le MCU accepte
+les ecritures. C'est le **seul** moyen de selectionner AU et CO :
+
+| ecriture dp5 | reponse MCU | mode |
+|---|---|---|
+| 0 | dp2=187, dp5=0 | CO (continu) |
+| 1 | dp2=170, dp5=1 | AU (auto) |
+| 2 | dp2=30,  dp5=2 | Manuel (consigne remise a 30) |
+
+Ecrire dp2=170 ou 187 est **rejete silencieusement** : le MCU valide 30..90 en
+ecriture sur ce DP et ignore le reste (pas d'ecretage a 30, la valeur
+precedente est conservee).
+
+**Condition importante : cela ne fonctionne que si l'appareil est en marche
+(dp1=1).** En veille, le MCU traite dp5 de facon incoherente : il peut accepter
+la trame, rapporter une autre valeur, ou revenir a 30 sans raison. Tous les
+essais faits en veille ont produit des resultats contradictoires.
+
+Passer en Manuel remet dp2 a 30 : il faut enchainer avec la consigne voulue.
 
 Le MCU envoie un **dump complet** (dp1,2,6,5,4,101,25) a la mise sous tension
 et a chaque changement d'etat, puis des reports unitaires toutes les 5 s.
@@ -83,7 +100,7 @@ Identite produit renvoyee (ASCII dans le payload du CMD=0x01) :
 | 1  | bool  | RW | 0 / 1 | Marche / Arret |
 | 2  | int 4o| RW | 30..90 pas de 5, **170=AU**, **187=CO** | Consigne |
 | 4  | enum  | RW | 0, 1 (le reste refuse) | Ventilateur 2 vitesses |
-| 5  | enum  | RO | 0=CO, 1=AU, 2=manuel | Mode reflete (non pilotable) |
+| 5  | enum  | **RW** | 0=CO, 1=AU, 2=manuel | Mode : lecture ET pilotage |
 | 6  | int 4o| RO | %RH | Humidite ambiante |
 | 25 | enum  | RO | = 1 constant | inconnu |
 | 101| enum  | RW | 0..24 | Timer heures, remis a 0 a l'extinction |

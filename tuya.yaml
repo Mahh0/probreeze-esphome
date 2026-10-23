@@ -87,7 +87,7 @@ uart:
   debug:
     direction: RX
     after:
-      timeout: 50ms
+      timeout: 200ms
     sequence:
       - lambda: |-
           UARTDebug::log_hex(direction, bytes, ':');
@@ -170,6 +170,18 @@ select:
       0: "Haut"
       1: "Bas"
 
+  # dp5 est documente RO cote Tuya, mais le MCU accepte visiblement les
+  # ecritures. A confirmer / retirer selon les essais.
+  - platform: tuya
+    id: mode_ctl
+    name: "Mode"
+    icon: mdi:tune
+    enum_datapoint: 5
+    options:
+      0: "CO (continu)"
+      1: "AU (auto)"
+      2: "Manuel"
+
 # ---------------------------------------------------------------------
 #  Etats
 # ---------------------------------------------------------------------
@@ -184,12 +196,6 @@ sensor:
     state_class: measurement
     accuracy_decimals: 0
 
-  # dp5 reflete le mode du selecteur physique (0=CO, 1=AU, 2=manuel).
-  # Il est en lecture seule : on le garde interne et on l'expose en texte lisible.
-  - platform: tuya
-    id: mode
-    internal: true
-    sensor_datapoint: 5
 
   - platform: wifi_signal
     name: "Signal WiFi"
@@ -201,21 +207,6 @@ sensor:
     entity_category: diagnostic
 
 text_sensor:
-  - platform: template
-    name: "Mode"
-    icon: mdi:tune
-    update_interval: 5s
-    lambda: |-
-      float v = id(mode).state;
-      if (isnan(v))
-        return {"inconnu"};
-      switch ((int) v) {
-        case 0: return {"CO (continu)"};
-        case 1: return {"AU (auto)"};
-        case 2: return {"Manuel"};
-        default: return {"inconnu"};
-      }
-
   - platform: version
     name: "Version ESPHome"
     entity_category: diagnostic

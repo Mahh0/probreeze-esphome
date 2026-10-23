@@ -13,7 +13,7 @@ Le protocole série **Tuya MCU** a été entièrement décodé à l'écoute.
 | `Ventilateur` | select | `dp4` (2 vitesses) |
 | `Timer` | select | `dp101` (0→24 h) |
 | `Humidité` | sensor | `dp6` |
-| `Mode` | text_sensor | `dp5` (CO / AU / Manuel) |
+| `Mode` | select | `dp5` (CO / AU / Manuel) — **pilotable** |
 | `Signal WiFi`, `Uptime`, `Cause du dernier reset` | sensors | diagnostic |
 
 ---
@@ -71,7 +71,7 @@ Identité produit renvoyée par le MCU :
 | 1 | bool | RW | 0 / 1 | Marche / Arrêt |
 | 2 | int 32 | RW | 30→90 par 5, **170 = AU**, **187 = CO** | Consigne |
 | 4 | enum | RW | 0 = haut, 1 = bas | Ventilateur |
-| 5 | enum | RO | 0 = CO, 1 = AU, 2 = manuel | Mode (reflet du sélecteur) |
+| 5 | enum | **RW** | 0 = CO, 1 = AU, 2 = manuel | Mode — lecture **et** pilotage |
 | 6 | int 32 | RO | %RH | Humidité ambiante |
 | 25 | enum | RO | = 1 | inconnu, constant |
 | 101 | enum | RW | 0→24 | Timer en heures |
@@ -93,9 +93,22 @@ MCU, ce ne sont pas des valeurs corrompues.
 3. **Les trames doivent être espacées** (≥ 300 ms). Un burst collé est vu comme
    une trame unique invalide → bip d'erreur.
 
-4. **AU et CO ne sont pas commandables (ou pas trouvé comment faire).** Le MCU valide `30..90` en écriture et
-   ramène toute valeur hors plage à 30. Ces deux modes ne peuvent venir que du
-   bouton physique ; ils sont seulement *lus* via `dp5`.
+4. **AU et CO ne se pilotent pas par `dp2`.** Le MCU valide `30..90` sur ce
+   datapoint et **ignore silencieusement** le reste — il ne ramène pas à 30, il
+   conserve la valeur précédente. Les modes passent par **`dp5`**, déclaré RO
+   côté spec Tuya mais bel et bien inscriptible :
+
+   | Écriture `dp5` | Réponse du MCU | Mode |
+   |---|---|---|
+   | `0` | `dp2=187`, `dp5=0` | CO (continu) |
+   | `1` | `dp2=170`, `dp5=1` | AU (auto) |
+   | `2` | `dp2=30`, `dp5=2` | Manuel |
+
+   ⚠️ Cela ne fonctionne **que si l'appareil est en marche** (`dp1=1`). En
+   veille, le MCU répond de façon incohérente et revient à 30 — c'est ce qui
+   nous a fait conclure à tort, un moment, que ces modes n'étaient pas
+   pilotables. Passer en Manuel remet `dp2` à 30 : il faut enchaîner avec la
+   consigne voulue.
 
 5. **Après avoir accepté une écriture, le MCU ignore son panneau physique**
    jusqu'au prochain power-cycle. C'est le comportement normal du mode « module
